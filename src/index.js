@@ -3,6 +3,7 @@ const path = require('path');
 const debug = require("debug")("node-angular");
 const http = require("http");
 const bodyParser = require("body-parser");
+const cors = require('cors');
 
 // DB config files
 require('./db/mongoose');
@@ -28,7 +29,9 @@ app.use((req, res, next) => {
   );
   next();
 });
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:4200'
+}));
 app.use(express.json());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
