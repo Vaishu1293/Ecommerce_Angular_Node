@@ -1,0 +1,3 @@
+MONGODB_URL=mongodb+srv://VaishaliSharath:W31NHKg9k1LSNIVU@cluster0.ocr2e.mongodb.net/?retryWrites=true&w=majority
+JWT_SECRET=one needs strength to be in solitude
+PORT=3000
