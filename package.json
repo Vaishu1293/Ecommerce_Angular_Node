@@ -22,7 +22,8 @@
     "node-mailjet": "^6.0.2",
     "request": "^2.88.2",
     "sharp": "^0.32.1",
-    "validator": "^13.1.1"
+    "validator": "^13.1.1",
+    "env-cmd": "^10.1.0"
   },
   "devDependencies": {
     "env-cmd": "^10.1.0"
