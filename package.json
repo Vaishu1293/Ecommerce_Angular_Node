@@ -4,8 +4,8 @@
   "description": "e learning module",
   "main": "index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "env-cmd -f ./config/dev.env nodemon src/index.js"
+    "start:dev": "env-cmd -f src/.env.development nodemon src/index.js",
+    "start:prod": "env-cmd -f src/.env.production nodemon src/index.js"
   },
   "author": "vaishali",
   "license": "ISC",
@@ -18,7 +18,8 @@
     "jsonwebtoken": "^9.0.0",
     "mongodb": "^3.5.9",
     "mongoose": "^5.9.25",
-    "multer": "^1.4.2",
+    "multer": "^1.4.4",
+    "node-mailjet": "^6.0.2",
     "request": "^2.88.2",
     "sharp": "^0.32.1",
     "validator": "^13.1.1"

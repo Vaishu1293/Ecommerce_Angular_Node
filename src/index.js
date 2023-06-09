@@ -1,16 +1,17 @@
-const express = require('express');
-const path = require('path');
+const express = require("express");
+const path = require("path");
 const debug = require("debug")("node-angular");
 const http = require("http");
 const bodyParser = require("body-parser");
-const cors = require('cors');
+const cors = require("cors");
 
 // DB config files
-require('./db/mongoose');
+require("./db/mongoose");
 
 // Routers
-const userRouter = require('./routers/user');
-const productRouter = require('./routers/product');
+const userRouter = require("./routers/user");
+const productRouter = require("./routers/product");
+const orderRouter = require("./routers/order");
 
 // Config
 const app = express();
@@ -29,19 +30,22 @@ app.use((req, res, next) => {
   );
   next();
 });
-app.use(cors({
-  origin: 'http://localhost:4200'
-}));
+app.use(
+  cors({
+    origin: "http://localhost:4200",
+  })
+);
 app.use(express.json());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
-app.use('/api/user', userRouter);
-app.use('/api/product', productRouter);
+app.use("/api/user", userRouter);
+app.use("/api/product", productRouter);
+app.use("/api/order", orderRouter);
 
-app.get('', (req, res) => {
+app.get("", (req, res) => {
   res.json({
-    msg: 'Welcome'
+    msg: "Welcome",
   });
 });
 
@@ -49,5 +53,5 @@ const server = http.createServer(app);
 
 // Setup server
 server.listen(port, () => {
-  console.log('Server is up on port ' + port);
+  console.log("Server is up on port " + port);
 });

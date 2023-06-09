@@ -1,245 +1,397 @@
-const express = require('express')
-const Product = require('../models/product')
-const Admin = require('../models/admin')
-const Customer = require('../models/customer')
-const router = new express.Router()
-const auth = require('../middleware/auth')
-const multer = require('multer')
-const sharp = require('sharp')
+const express = require("express");
+const Product = require("../models/product");
+const Admin = require("../models/admin");
+const router = new express.Router();
+const auth = require("../middleware/auth");
+const multer = require("multer");
+const sharp = require("sharp");
 
 //-------------------------PRODUCT ROUTER FOR ADMIN----------------------------------------------
 
 // 1) ADDING PRODUCT-
 
 const upload = multer({
-
   limits: {
-    fileSize: 100000000
+    fileSize: 100000000,
   },
   fileFilter(req, file, cb) {
-    //if (!file) {
-    //  return
-    //}
-
-    if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
-      return cb(new Error('Please upload an image'))
+    console.log(file);
+    if (!file.originalname.match(/\.(jpg|jpeg|png|json)$/)) {
+      return cb(
+        new Error(
+          "Please upload an image with a .jpg, .jpeg, or .png extension"
+        )
+      );
     }
+    console.log(file.originalname);
+    cb(null, true);
+  },
+});
 
-    cb(undefined, true)
-  }
-})
-
-router.post('/products', auth, upload.single('avatar'), async (req, res) => {
-    const buffer = await sharp(req.file.buffer).png().toBuffer()
-    const product = new Product({
-      ...req.body,
-      avatar: buffer,
-      owner: req.user._id
-    })
-
+router.post(
+  "/add-product",
+  auth,
+  upload.single("product_image"),
+  async (req, res) => {
     try {
-        await product.save()
+      if (!req.file) {
+        return res.status(400).json({ message: "No file attached" });
+      }
+
+      const buffer = await sharp(req.file.buffer).png().toBuffer();
+      const base64Image = buffer.toString("base64");
+
+      const product = new Product({
+        product_name: req.body.product_name,
+        brand_name: req.body.brand_name,
+        description: req.body.description,
+        allergens: req.body.allergens,
+        nutrition_facts: JSON.parse(req.body.nutrition_facts), // Parse the JSON string into an object
+        stocks: parseInt(req.body.stocks),
+        price: parseFloat(req.body.price),
+        expiration_date: new Date(req.body.expiration_date),
+        country_of_origin: req.body.country_of_origin,
+        product_category: req.body.product_category,
+        product_image: base64Image,
+        owner: req.user._id,
+      });
+
+      await product.save();
+
       res.status(201).json({
+        message: "Product added successfully!",
         product: product,
-        user: req.user
-      })
-    } catch (e) {
-      res.status(400).json({
-        error: e
-      })
+        user: req.user,
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(400).json({ error: error.message });
     }
-})
+  }
+);
 
+//--------------------------------------------------BULK UPLOAD-------------------------------------------------------------------
+
+router.post(
+  "/bulk-upload",
+  auth,
+  upload.fields([
+    { name: "bulk_data", maxCount: 1 },
+    { name: "product_image", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      // Find and parse the JSON file and the images file
+      let jsonData;
+      let base64Images;
+
+      jsonData = JSON.parse(req.files.bulk_data[0].buffer.toString());
+      base64Images = JSON.parse(req.files.product_image[0].buffer.toString());
+
+      // Check that the files were found and parsed correctly
+      if (!jsonData || !base64Images) {
+        return res.status(400).json({ message: "Required files not found" });
+      }
+
+      const productPromises = [];
+
+      for (let i = 0; i < jsonData.length; i++) {
+        const data = jsonData[i];
+
+        const base64Image = base64Images[i]; // Get the base64 encoded image string
+
+        // Split the base64 image string to remove the data URL prefix
+        // const parts = base64Image.split(';base64,');
+        // const base64Data = parts[1];
+
+        // // Convert the Base64 encoded data to a buffer
+        // const buffer = Buffer.from(base64Data, 'base64');
+
+        const product = new Product({
+          product_name: data.product_name,
+          brand_name: data.brand_name,
+          description: data.description,
+          allergens: data.allergens,
+          nutrition_facts: data.nutrition_facts,
+          stocks: data.stocks,
+          price: data.price,
+          expiration_date: new Date(data.expiration_date),
+          country_of_origin: data.country_of_origin,
+          product_category: data.product_category,
+          product_image: base64Image,
+          owner: req.user._id,
+        });
+
+        productPromises.push(product.save());
+      }
+
+      const products = await Promise.all(productPromises);
+
+      res.status(201).json({
+        message: "Products added successfully!",
+        products: products,
+        user: req.user,
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(400).json({ error: error.message });
+    }
+  }
+);
+
+//-------------------------------------- RETRIVE ADMIN PRODUCTS------------------------------------------------------------------
 // 2) ONLY PRODUCTS CREATED BY ADMIN-
-
 
 // GET /products?completed=true
 // GET /products?pageSize=${productsPerPage}&currentPage=${currentPage}
 // GET /products?sortBy=createdAt:desc or asc
-router.get('/user-products', auth, async (req, res) => {
-
-  const sort = {}
+router.get("/user-products", auth, async (req, res) => {
+  const sort = {};
 
   if (req.query.sortBy) {
-    const parts = req.query.sortBy.split(':')
-    sort[parts[0]] = parts[1] === 'desc' ? -1 : 1
+    const parts = req.query.sortBy.split(":");
+    sort[parts[0]] = parts[1] === "desc" ? -1 : 1;
   }
 
   try {
+    await req.user
+      .populate({
+        path: "products",
+        options: {
+          limit: parseInt(req.query.limit),
+          skip: parseInt(req.query.limit * (req.query.skip - 1)),
+          sort,
+        },
+      })
+      .execPopulate();
 
-    await req.user.populate({
-      path: 'products',
-      options: {
-        limit: parseInt(req.query.limit),
-        skip: parseInt(req.query.limit * (req.query.skip - 1)),
-        sort
-      }
-    }).execPopulate()
-
-    userProducts = await Product.find()
-    let length = userProducts.length
+    userProducts = await Product.find();
+    let length = userProducts.length;
 
     //console.log(length)
 
     res.json({
       owner: req.user.name,
       products: req.user.products,
-      productsCount: length
-    })
+      productsCount: length,
+    });
   } catch (e) {
     res.status(500).json({
-      error: e
-    })
+      error: e,
+    });
   }
-})
+});
 
-router.get('/products/:id', auth, async (req, res) => {
-    const _id = req.params.id
+//----------------------------RETRIVE SINGLE ADMIN PRODUCT----------------------------------------------------------------------
 
-    try {
-        const product = await Product.findOne({ _id, owner: req.user._id })
+router.get("/products/:id", auth, async (req, res) => {
+  const _id = req.params.id;
 
-        if (!product) {
-          return res.status(404).json({
-            error: "Not Found"
-          })
-        }
+  try {
+    const product = await Product.findOne({ _id, owner: req.user._id });
 
-      res.status(200).json({
-        product: product,
-        owner: req.user.name
-      })
-    } catch (e) {
-      res.status(500).json({
-        error : e
-      })
+    if (!product) {
+      return res.status(404).json({
+        error: "Not Found",
+      });
     }
-})
 
+    res.status(200).json({
+      product: product,
+      owner: req.user,
+      domain: req.user.domain,
+    });
+  } catch (e) {
+    res.status(500).json({
+      error: e,
+    });
+  }
+});
 
-// 3) UPDATE PRODUCT
+// -----------------------------------------------UPDATE PRODUCT-------------------------------------------------------------------
 
-router.put('/products/:id', auth, upload.single('avatar'), async (req, res) => {
-    const buffer = await sharp(req.file.buffer).png().toBuffer()
-    const updates = Object.keys(req.body)
-    const allowedUpdates = ['instructions', 'avatar']
-    const isValidOperation = updates.every((update) => allowedUpdates.includes(update))
+router.put(
+  "/products/:id",
+  auth,
+  upload.single("product_image"),
+  async (req, res) => {
+    const buffer = await sharp(req.file.buffer).png().toBuffer();
+    const updates = Object.keys(req.body);
+    var p = req.body;
+
+    const allowedUpdates = [
+      "product_name",
+      "brand_name",
+      "description",
+      "allergens",
+      "nutrition_facts",
+      "stocks",
+      "price",
+      "expiration_date",
+      "country_of_origin",
+      "product_category",
+      "product_image",
+    ];
+
+    //productData.nutrition_facts = JSON.parse(productData.nutrition_facts);
+    const isValidOperation = updates.every((update) =>
+      allowedUpdates.includes(update)
+    );
 
     if (!isValidOperation) {
-        return res.status(400).json({ error: 'Invalid updates!' })
+      return res.status(400).json({ error: "Invalid updates!" });
     }
 
     try {
-      const product = await Product.findOne({ _id: req.params.id, owner: req.user._id })
-      //console.log(product)
+      const product = await Product.findOne({
+        _id: req.params.id,
+        owner: req.user._id,
+      });
+      console.log(product);
 
-        if (!product) {
-          return res.status(404).json({
-            error: "Not Found!"
-          })
-        }
+      if (!product) {
+        return res.status(404).json({
+          error: "Not Found!",
+        });
+      }
 
-      updates.forEach((update) => product[update] = req.body[update])
+      p.nutrition_facts = JSON.parse(p.nutrition_facts);
+      updates.forEach((update) => (product[update] = p[update]));
 
       if (buffer) {
-        product.avatar = buffer
+        product.product_image = buffer;
       }
-      
-      savedProduct = await product.save()
+
+      savedProduct = await product.save();
       //console.log(product)
       return res.status(200).json({
-        msg: "updated Successfully",
+        message: "updated Successfully",
         product: savedProduct,
-        id: product._id
-      })
+        id: product._id,
+      });
     } catch (e) {
       res.status(400).json({
-        error: e
-      })
+        error: e,
+      });
     }
-})
+  }
+);
+
+//--------------------------------------------------------------DELETE ROUTE---------------------------------------------------
+
+router.delete("/products/:id", auth, async (req, res) => {
+  const _id = req.params.id;
+
+  try {
+    const product = await Product.findOneAndRemove({
+      _id,
+      owner: req.user._id,
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        error: "Product not found",
+      });
+    }
+
+    res.status(200).json({
+      message: "Product deleted successfully",
+      owner: req.user,
+      domain: req.user.domain,
+    });
+  } catch (e) {
+    res.status(500).json({
+      error: e.message,
+    });
+  }
+});
 
 //----------------------PRODUCTS ROUTERS FOR GUESTS---------------------------------------------------
 
 // 1) GET PRODUCTS
 
-router.get('/allproducts', async (req, res) => {
-    var mysort = {}
+router.get("/allproducts", async (req, res) => {
+  var mysort = {};
 
-    if (req.query.sortBy) {
-        const parts = req.query.sortBy.split(':')
-        mysort[parts[0]] = parts[1] === 'desc' ? -1 : 1
-    }
+  if (req.query.sortBy) {
+    const parts = req.query.sortBy.split(":");
+    mysort[parts[0]] = parts[1] === "desc" ? -1 : 1;
+  }
 
-    var limit = parseInt(req.query.limit)
-    var skip = parseInt(req.query.limit * (req.query.skip - 1))
-
-    try {
-      const products = await Product.find({}).sort(mysort).skip(skip).limit(limit)
-      allProducts = await Product.find({})
-      let length = allProducts.length
-
-      res.status(200).json({
-        products: products,
-        productsCount: length
-      })
-    } catch (e) {
-      return res.status(500).json({
-        error: "error"
-      })
-    }
-})
-
-// 3) GET ALL PRODUCTS FOR REGISTERED USERS -
-
-router.get('/allproducts/get/:id', async (req, res) => {
-  const _id = req.params.id
+  var limit = parseInt(req.query.limit);
+  var skip = parseInt(req.query.limit * (req.query.skip - 1));
 
   try {
-    const product = await Product.findOne({ _id })
+    const products = await Product.find({})
+      .sort(mysort)
+      .skip(skip)
+      .limit(limit);
+    allProducts = await Product.find({});
+    let length = allProducts.length;
+
+    console.log(products)
+
+    res.status(200).json({
+      products: products,
+      productsCount: length,
+    });
+  } catch (e) {
+    return res.status(500).json({
+      error: "error",
+    });
+  }
+});
+
+// 3) GET ONE PRODUCTS FOR ALL USERS -
+
+router.get("/allproducts/get/:id", async (req, res) => {
+  const _id = req.params.id;
+
+  try {
+    const product = await Product.findOne({ _id });
 
     if (!product) {
-      return res.status(404).send()
+      return res.status(404).send();
     }
 
-    const owner = await Admin.findOne({ _id: product.owner})
+    const owner = await Admin.findOne({ _id: product.owner });
     res.status(200).json({
       product: product,
-      owner: owner.name
-    })
+      owner: owner.name,
+    });
   } catch (e) {
-    res.status(500).send()
+    res.status(500).send();
   }
-})
+});
 
-// 2) BUY PRODUCTS
+//-------------------------------------ADD PRODUCT TO WISHLIST------------------------------------------------------------------
 
-router.patch('/products/buy/:id', auth, async (req, res) => {    
+router.patch('/products/wishlist/:id', auth, async (req, res) => {    
   try {
 
         const id = req.user._id
         const product = await Product.findOne({ _id: req.params.id })
-        const user = await Customer.findOne({ _id: id })
+        const customer = await Customer.findOne({ _id: id })
       //console.log(user)
-      //console.log(product)
-        const product_id = product.id
+      //console.log(task)
+        const product_id = product._id
         
         if (!product) {
             return res.status(404).send()
         }
 
-        await product.save()
-        await user.save()
         const buyer = await product.addBuyer(id)
         if (buyer) {
-          const adProduct = await user.addProduct(product_id)
-          //console.log(buyer)
-          //console.log(adProduct)
+          const adProduct = await customer.addProduct(product_id)
+         
+        await product.save()
+        await customer.save()
+
           res.status(201).json({
             product: product,
-            user: user,
-            adProduct: adProduct,
-            msg: "Enrolled for the Product"
+            customer: customer,
+            domain: customer.domain,
+            message: "Product Wishlisted"
           })
         } else {
           res.status(500).json({
@@ -255,121 +407,6 @@ router.patch('/products/buy/:id', auth, async (req, res) => {
     }
 })
 
-// 3) GET SINGLE PRODUCT WHICH IS BOUGHT BY USER 
+//-----------------------------------  *****END*****----------------------------------------------------------------------------
 
-router.get('/myproducts/get/:id', auth, async (req, res) => {
-    const _id = req.params.id
-
-    try {
-        const product = await Product.findOne({ _id })
-
-        if (!product) {
-          return res.status(404).json({
-            error: "No such Product"
-          })
-        }
-
-      const owner = await Admin.findOne({ _id: product.owner })
-      res.json({
-        product: product,
-        owner: owner.name
-      })
-    } catch (e) {
-      res.status(500).json({
-        error: e
-      })
-    }
-})
-
-// 4) GET PRODUCTS ONLY BOUGHT BY USER-
-
-router.get('/myproducts', auth, async (req, res) => {
-
-  var per_page = parseInt(req.query.limit) || 10
-  var page = parseInt(req.query.skip) || 1
-  offset = (page - 1) * per_page
-
-    myProducts = []
-    try {
-        products = req.user.products
-        for (t of products) {
-            const _id = t.product
-            myproduct = await Product.findById(_id)
-            myProducts.push(myproduct)
-      }
-
-      myProducts.reverse()
-      
-      let length = myProducts.length
-      modifiedMyProducts = myProducts.slice(offset).slice(0, req.query.limit)
-      
-      res.json({
-        length: modifiedMyProducts.length,
-        buyerTotalProducts: length,
-        buyerProducts: modifiedMyProducts
-      })
-    } catch (e) {
-        res.status(500).send()
-    }
-})
-
-
-//-----------------------------------OTHER ROUTES-------------------------------------------------------
-
-
-router.post('/products/:id/avatar', auth, upload.single('avatar'), async (req, res) => {
-  const product = await Product.findById(req.params.id)
-  const buffer = await sharp(req.file.buffer).png().toBuffer()
-    //const buffer = await sharp(req.file.buffer).resize({ width: 250, height: 250 }).png().toBuffer()
-    product.avatar = buffer
-    await product.save()
-    res.send()
-}, (error, req, res, next) => {
-    res.status(400).send({ error: error.message })
-})
-
-router.post('/products/:id/productimage', auth, upload.single('productimage'), async (req, res) => {
-  const product = await Product.findById(req.params.id)
-  const buffer = await sharp(req.file.buffer).png().toBuffer()
-  //const buffer = await sharp(req.file.buffer).resize({ width: 350, height: 250 }).png().toBuffer()
-  product.productimage = buffer
-  await product.save()
-  res.send()
-}, (error, req, res, next) => {
-  res.status(400).send({ error: error.msg })
-})
-
-router.get('/products/:id/productimage', async (req, res) => {
-    try {
-        const product = await Product.findById(req.params.id)
-
-        if (!product || !product.productimage) {
-            throw new Error()
-        }
-
-        res.set('Content-Type', 'image/png')
-        res.send(product.productimage)
-    } catch (e) {
-        res.status(404).send()
-    }
-})
-
-router.get('/products/:id/avatar', async (req, res) => {
-    try {
-        const product = await Product.findById(req.params.id)
-
-        if (!product || !product.avatar) {
-            throw new Error()
-        }
-
-        res.set('Content-Type', 'image/png')
-      res.json({
-        img: product.avatar
-      })
-    } catch (e) {
-        res.status(404).send()
-    }
-})
-
-
-module.exports = router
+module.exports = router;
