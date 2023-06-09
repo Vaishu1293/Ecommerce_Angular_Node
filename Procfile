@@ -1,1 +1,1 @@
-web: nodemon src/index.js
+web: env-cmd -f src/.env.production nodemon src/index.js
