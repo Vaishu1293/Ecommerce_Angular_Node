@@ -32,6 +32,7 @@ app.use((req, res, next) => {
 });
 app.use(
   cors({
+    //origin: "http://localhost:4200",
     origin: "https://food-vending-frontend.web.app",
   })
 );

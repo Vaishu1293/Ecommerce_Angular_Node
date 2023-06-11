@@ -39,7 +39,7 @@ router.post(
       }
 
       const buffer = await sharp(req.file.buffer).png().toBuffer();
-      const base64Image = buffer.toString("base64");
+      //const base64Image = buffer.toString("base64");
 
       const product = new Product({
         product_name: req.body.product_name,
@@ -52,7 +52,7 @@ router.post(
         expiration_date: new Date(req.body.expiration_date),
         country_of_origin: req.body.country_of_origin,
         product_category: req.body.product_category,
-        product_image: base64Image,
+        product_image: buffer,
         owner: req.user._id,
       });
 
@@ -77,28 +77,32 @@ router.post(
   auth,
   upload.fields([
     { name: "bulk_data", maxCount: 1 },
-    { name: "product_image", maxCount: 1 },
+    { name: "product_image", maxCount: 100 },
   ]),
   async (req, res) => {
     try {
-      // Find and parse the JSON file and the images file
+      // Find and parse the JSON file
       let jsonData;
-      let base64Images;
 
       jsonData = JSON.parse(req.files.bulk_data[0].buffer.toString());
-      base64Images = JSON.parse(req.files.product_image[0].buffer.toString());
 
       // Check that the files were found and parsed correctly
-      if (!jsonData || !base64Images) {
+      if (!jsonData) {
         return res.status(400).json({ message: "Required files not found" });
       }
+
+      // Store all the buffer promises
+      const bufferPromises = req.files.product_image.map(file => sharp(file.buffer).toBuffer());
+
+      // Wait until all buffers are ready
+      const buffers = await Promise.all(bufferPromises);
 
       const productPromises = [];
 
       for (let i = 0; i < jsonData.length; i++) {
         const data = jsonData[i];
 
-        const base64Image = base64Images[i]; // Get the base64 encoded image string
+        const buffer = buffers[i]; // Get the base64 encoded image string
 
         // Split the base64 image string to remove the data URL prefix
         // const parts = base64Image.split(';base64,');
@@ -118,7 +122,7 @@ router.post(
           expiration_date: new Date(data.expiration_date),
           country_of_origin: data.country_of_origin,
           product_category: data.product_category,
-          product_image: base64Image,
+          product_image: buffer,
           owner: req.user._id,
         });
 
