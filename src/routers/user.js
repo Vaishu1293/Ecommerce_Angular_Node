@@ -90,19 +90,6 @@ router.post("/register", async (req, res) => {
     }
   } catch (e) {
     var msg = "error";
-    console.log(e);
-    if (e.keyValue.phone) {
-      //console.log(e.keyValue.phone)
-      msg = "Phone No already enrolled";
-    } else if (e.keyValue.email) {
-      console.log(e.keyValue.email);
-      msg = "Email already enrolled";
-    } else if (e.keyValue.email && e.keyValue.phone) {
-      msg = "Email and Phone No already enrolled";
-    } else {
-      msg = e;
-    }
-
     res.status(400).json({
       msg: msg,
     });
