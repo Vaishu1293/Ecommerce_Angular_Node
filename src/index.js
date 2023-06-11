@@ -19,7 +19,7 @@ const port = process.env.PORT || 3000;
 
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  //res.setHeader('Access-Control-Allow-Origin', 'https://food-vending-frontend.web.app/');
+  //res.setHeader('Access-Control-Allow-Origin', 'https://food-vending-frontend.web.app');
   res.setHeader(
     "Access-Control-Allow-Headers",
     "Origin, X-Requested-With, Content-Type, Accept, Authorization"
@@ -32,7 +32,7 @@ app.use((req, res, next) => {
 });
 app.use(
   cors({
-    origin: "https://food-vending-frontend.web.app/",
+    origin: "https://food-vending-frontend.web.app",
   })
 );
 app.use(express.json());
